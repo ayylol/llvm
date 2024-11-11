@@ -30,6 +30,7 @@ namespace ext::oneapi::experimental {
 
 namespace detail {
 
+// TODO: RULE OF THREE
 class image_mem_impl {
   using raw_handle_type = image_mem_handle;
 
