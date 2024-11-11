@@ -353,6 +353,9 @@ private:
 struct finally {
   std::function<void()> MFunc;
 
+  finally() = default;
+  finally(const finally&) = default;
+  finally& operator=(const finally&) = default;
   ~finally() {
     if (xptiTraceEnabled())
       MFunc();
@@ -663,6 +666,11 @@ public:
         (xptiStashTuple(key, value) == xpti::result_t::XPTI_RESULT_SUCCESS);
   }
 
+  // Copy and copy assignment are deleted since we dont want to stash the same
+  // key-value pair multiple times
+  stash_tuple(const stash_tuple&) = delete;
+  stash_tuple& operator=(const stash_tuple&) = delete;
+
   /// @brief Destroys the stash_tuple object and unstashes the key-value pair if
   /// it was stashed successfully earlier.
   ///
@@ -733,6 +741,8 @@ public:
     MUId.p2 = 0;
     MUId.instance = 0;
   };
+
+  ~uid_object_t() = default;
 
   /// @brief Copy constructor for creating a uid_object_t object as a copy of
   /// another.
@@ -1522,6 +1532,7 @@ private:
 /// #endif
 ///
 ///  See also: xptiTracePointTest in xpti_correctness_tests.cpp
+///
 class tracepoint_t {
 public:
   // Constructor that makes calls to xpti API layer to register strings and
@@ -1613,6 +1624,12 @@ public:
       }
     }
   }
+
+  // TODO: RULE OF THREE
+  // set m_top to false???
+  tracepoint_t(const tracepoint_t&) = default;
+  tracepoint_t& operator=(const tracepoint_t&) = default;
+
   ~tracepoint_t() {
     // If tracing is not enabled, don't do anything
     if (!xptiTraceEnabled())
