@@ -30,7 +30,6 @@ namespace ext::oneapi::experimental {
 
 namespace detail {
 
-// TODO: RULE OF THREE
 class image_mem_impl {
   using raw_handle_type = image_mem_handle;
 
@@ -39,6 +38,9 @@ public:
                                const device &syclDevice,
                                const context &syclContext);
   __SYCL_EXPORT ~image_mem_impl();
+
+  image_mem_impl(const image_mem_impl&) = delete;
+  image_mem_impl& operator=(const image_mem_impl&) = delete;
 
   raw_handle_type get_handle() const { return handle; }
   const image_descriptor &get_descriptor() const { return descriptor; }
