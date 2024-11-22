@@ -122,6 +122,50 @@ class SYCLEndToEndTest(lit.formats.ShTest):
         except ValueError as e:
             raise ValueError("Error in UNSUPPORTED list:\n%s" % str(e))
 
+    def make_default_features_list(self, test, expr, triple, add_default=True):
+        # Dictionaries of features which we know are always/never present for a
+        # given triple (or the system in general).
+        # TODO: REPLACE WITH REGISTERED FEATURES
+        always_has_feature = {
+            "spir64": set(),
+            "system": {"linux"},
+        }
+        never_has_feature = {
+            "spir64": {
+                "cuda", "hip", "hip_amd", "hip_nvidia", "native_cpu"
+            },
+            "system": {
+                "windows", "system-windows", "build-and-run-mode"
+            },
+        }
+        features_queried_by_test = self.getUsedFeatures(test, [expr])
+        features = set()
+        exceptions = {}
+        if add_default:
+            exceptions = never_has_feature[triple].union(never_has_feature["system"])
+        else:
+            exceptions = always_has_feature[triple].union(always_has_feature["system"])
+        for f in features_queried_by_test:
+            if (not add_default if f in exceptions else add_default):
+                features.add(f)
+        return features
+
+    def select_triples_for_test(self, test):
+        # Check Triples
+        triples = set()
+        possible_triples = ["spir64"]
+        for triple in possible_triples:
+            unsupported = self.make_default_features_list(test, "UNSUPPORTED:", triple, False)
+            required = self.make_default_features_list(test, "REQUIRES:", triple)
+            features = unsupported.union(required)
+            if test.getMissingRequiredFeaturesFromList(features):
+                continue
+            if self.getMatchedFromList(features, test.unsupported):
+                continue
+            triples.add(triple)
+
+        return triples
+
     def select_devices_for_test(self, test):
         devices = []
         for d in test.config.sycl_devices:
@@ -181,11 +225,15 @@ class SYCLEndToEndTest(lit.formats.ShTest):
         devices_for_test = []
         triples = set()
         if test.config.test_mode == "build-only":
-            if "build-and-run-mode" in test.requires or "true" in test.unsupported:
+            if (any('!' in a for a in test.requires)):
+                return lit.Test.Result(
+                    lit.Test.UNSUPPORTED, "unsupported on build-only due to negation"
+                )
+            triples = self.select_triples_for_test(test)
+            if not triples:
                 return lit.Test.Result(
                     lit.Test.UNSUPPORTED, "Test unsupported for this environment"
                 )
-            triples = {"spir64"}
         else:
             devices_for_test = self.select_devices_for_test(test)
             if not devices_for_test:
