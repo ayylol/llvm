@@ -56,6 +56,30 @@ def parse_min_intel_driver_req(line_number, line, output):
 
 
 class SYCLEndToEndTest(lit.formats.ShTest):
+    def getUsedFeatures(self, test, feature_keywords = ["UNSUPPORTED:", "REQUIRES:", "XFAIL:"]):
+        """
+        based on Test.getUsedFeatures() in llvm/llvm/utils/lit/lit/Test.py
+        getUsedFeatures() -> list of strings
+
+        Returns a list of all features appearing in XFAIL, UNSUPPORTED and
+        REQUIRES annotations for this test.
+        """
+        import lit.TestRunner
+        import itertools
+
+        parsed = lit.TestRunner._parseKeywords(
+            test.getSourcePath(), require_script=False
+        )
+        boolean_expressions = itertools.chain.from_iterable(
+            parsed[k] or [] for k in feature_keywords
+        )
+        tokens = itertools.chain.from_iterable(
+            BooleanExpression.tokenize(expr)
+            for expr in boolean_expressions
+            if expr != "*"
+        )
+        matchExpressions = set(filter(BooleanExpression.isMatchExpression, tokens))
+        return matchExpressions
     def parseTestScript(self, test):
         """This is based on lit.TestRunner.parseIntegratedTestScript but we
         overload the semantics of REQUIRES/UNSUPPORTED/XFAIL directives so have
