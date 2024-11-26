@@ -54,9 +54,37 @@ def parse_min_intel_driver_req(line_number, line, output):
 
     return output
 
+# List of available features that affect building
+class FeatureInfo:
+    def __init__(self,
+                 device_agnostic = False,
+                 triples_always_has = set(),
+                 triples_never_has = set()):
+        self.device_agnostic = device_agnostic
+        self.triples_always_has = triples_always_has
+        self.triples_never_has = triples_never_has
+
+def getPossibleFeatures():
+    return {
+            "linux"                 :FeatureInfo(device_agnostic=True),
+            "system-linux"          :FeatureInfo(device_agnostic=True),
+            "windows"               :FeatureInfo(device_agnostic=True),
+            "system-windows"        :FeatureInfo(device_agnostic=True),
+            "build-and-run-mode"    :FeatureInfo(device_agnostic=True),
+            "opencl-aot"            :FeatureInfo(device_agnostic=True),
+            "ocloc"                 :FeatureInfo(device_agnostic=True),
+            "opencl_icd"            :FeatureInfo(device_agnostic=True),
+            "cl_options"            :FeatureInfo(device_agnostic=True),
+            "cuda"                  :FeatureInfo(triples_never_has={"spir64"}),
+            "hip"                   :FeatureInfo(triples_never_has={"spir64"}),
+            "hip_amd"               :FeatureInfo(triples_never_has={"spir64"}),
+            "hip_nvidia"            :FeatureInfo(triples_never_has={"spir64"}),
+            "native_cpu"            :FeatureInfo(triples_never_has={"spir64"}),
+    }
+possible_features=getPossibleFeatures()
 
 class SYCLEndToEndTest(lit.formats.ShTest):
-    def getUsedFeatures(self, test, feature_keywords = ["UNSUPPORTED:", "REQUIRES:", "XFAIL:"]):
+    def getUsedFeatures(self, test, statement):
         """
         based on Test.getUsedFeatures() in llvm/llvm/utils/lit/lit/Test.py
         getUsedFeatures() -> list of strings
@@ -67,12 +95,7 @@ class SYCLEndToEndTest(lit.formats.ShTest):
         import lit.TestRunner
         import itertools
 
-        parsed = lit.TestRunner._parseKeywords(
-            test.getSourcePath(), require_script=False
-        )
-        boolean_expressions = itertools.chain.from_iterable(
-            parsed[k] or [] for k in feature_keywords
-        )
+        boolean_expressions=itertools.chain(statement)
         tokens = itertools.chain.from_iterable(
             BooleanExpression.tokenize(expr)
             for expr in boolean_expressions
@@ -80,6 +103,7 @@ class SYCLEndToEndTest(lit.formats.ShTest):
         )
         matchExpressions = set(filter(BooleanExpression.isMatchExpression, tokens))
         return matchExpressions
+
     def parseTestScript(self, test):
         """This is based on lit.TestRunner.parseIntegratedTestScript but we
         overload the semantics of REQUIRES/UNSUPPORTED/XFAIL directives so have
@@ -123,31 +147,17 @@ class SYCLEndToEndTest(lit.formats.ShTest):
             raise ValueError("Error in UNSUPPORTED list:\n%s" % str(e))
 
     def make_default_features_list(self, test, expr, triple, add_default=True):
-        # Dictionaries of features which we know are always/never present for a
-        # given triple (or the system in general).
-        # TODO: REPLACE WITH REGISTERED FEATURES
-        always_has_feature = {
-            "spir64": set(),
-            "system": {"linux"},
-        }
-        never_has_feature = {
-            "spir64": {
-                "cuda", "hip", "hip_amd", "hip_nvidia", "native_cpu"
-            },
-            "system": {
-                "windows", "system-windows", "build-and-run-mode"
-            },
-        }
-        features_queried_by_test = self.getUsedFeatures(test, [expr])
+        features_queried_by_test = self.getUsedFeatures(test, expr)
         features = set()
-        exceptions = {}
-        if add_default:
-            exceptions = never_has_feature[triple].union(never_has_feature["system"])
-        else:
-            exceptions = always_has_feature[triple].union(always_has_feature["system"])
-        for f in features_queried_by_test:
-            if (not add_default if f in exceptions else add_default):
-                features.add(f)
+        for feature in features_queried_by_test:
+            info = possible_features[feature] if feature in possible_features else FeatureInfo()
+            if info.device_agnostic:
+                continue
+            if add_default and triple in info.triples_never_has:
+                continue
+            if not add_default and triple not in info.triples_always_has:
+                continue
+            features.add(feature)
         return features
 
     def select_triples_for_test(self, test):
@@ -155,9 +165,9 @@ class SYCLEndToEndTest(lit.formats.ShTest):
         triples = set()
         possible_triples = ["spir64"]
         for triple in possible_triples:
-            unsupported = self.make_default_features_list(test, "UNSUPPORTED:", triple, False)
-            required = self.make_default_features_list(test, "REQUIRES:", triple)
-            features = unsupported.union(required)
+            unsupported = self.make_default_features_list(test, test.unsupported, triple, False)
+            required = self.make_default_features_list(test, test.requires, triple)
+            features = test.config.available_features | unsupported | required
             if test.getMissingRequiredFeaturesFromList(features):
                 continue
             if self.getMatchedFromList(features, test.unsupported):
@@ -225,7 +235,8 @@ class SYCLEndToEndTest(lit.formats.ShTest):
         devices_for_test = []
         triples = set()
         if test.config.test_mode == "build-only":
-            if (any('!' in a for a in test.requires)):
+            if (any('!' in a for a in test.requires+test.unsupported)):
+                litConfig.warning("/".join(test.path_in_suite) + " unsupported in build-only mode due to negation in features")
                 return lit.Test.Result(
                     lit.Test.UNSUPPORTED, "unsupported on build-only due to negation"
                 )
