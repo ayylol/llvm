@@ -84,7 +84,7 @@ def getPossibleFeatures():
 possible_features=getPossibleFeatures()
 
 class SYCLEndToEndTest(lit.formats.ShTest):
-    def getUsedFeatures(self, test, statement):
+    def getUsedFeatures(self, test, expressions):
         """
         based on Test.getUsedFeatures() in llvm/llvm/utils/lit/lit/Test.py
         getUsedFeatures() -> list of strings
@@ -95,7 +95,7 @@ class SYCLEndToEndTest(lit.formats.ShTest):
         import lit.TestRunner
         import itertools
 
-        boolean_expressions=itertools.chain(statement)
+        boolean_expressions=itertools.chain(expressions)
         tokens = itertools.chain.from_iterable(
             BooleanExpression.tokenize(expr)
             for expr in boolean_expressions
