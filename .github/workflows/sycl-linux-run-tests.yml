@@ -156,6 +156,8 @@ jobs:
       options: ${{ inputs.image_options }}
     env: ${{ fromJSON(inputs.env) }}
     steps:
+    # TODO: Deduce artifact archive params
+    # NOTE: Only needs to run for build-only runs
     - name: Reset Intel GPU
       if: inputs.reset_intel_gpu == 'true'
       run: |
@@ -270,6 +272,10 @@ jobs:
             cat /usr/local/lib/igc/IGCTAG.txt
           fi
 
+    ## TODO: Download E2E Binaries
+    ## TODO: Extract/Setup E2E Binaries
+    # Only should be done for run-only runs (artifact name needs to be passed in)
+
     - name: Deduce E2E CMake options
       if: inputs.tests_selector == 'e2e'
       id: cmake_opts
@@ -375,3 +381,6 @@ jobs:
         grep 'exit code: [^0]' -r logs >> $GITHUB_STEP_SUMMARY
 
         exit $ret
+    # TODO: Pack E2E binaries
+    # TODO: Upload E2e binaries
+    # NOTE: Only should be ran on build-only runs
