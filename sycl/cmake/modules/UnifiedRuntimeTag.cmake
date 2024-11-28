@@ -1,7 +1,7 @@
-# commit b0f9293d9b39ce0f8019a02198119a8b6fe0b05f
-# Merge: b5294ee0 1f687880
+# commit db83117e830406b0d9950e24892dba868acba354
+# Merge: 0a90db9b c79df596
 # Author: Callum Fare <callum@codeplay.com>
-# Date:   Fri Nov 22 11:50:36 2024 +0000
-#     Merge pull request #2326 from martygrant/martin/fixDevicePartitionOpenCL
-#     Index into property array in urDevicePartition for OpenCL
-set(UNIFIED_RUNTIME_TAG b0f9293d9b39ce0f8019a02198119a8b6fe0b05f)
+# Date:   Wed Nov 27 16:04:19 2024 +0000
+#     Merge pull request #2261 from againull/againull/2d_block_exp
+#     Add new device descriptor to query 2D block array capabilities of the Intel GPU
+set(UNIFIED_RUNTIME_TAG db83117e830406b0d9950e24892dba868acba354)
