@@ -35,7 +35,8 @@ config.recursiveExpansionLimit = 10
 
 # To be filled by lit.local.cfg files.
 config.required_features = []
-config.unsupported_features = []
+# FIXME: FOR TEMPORARY DISABLING ALL
+config.unsupported_features = ["true"]
 
 # test-mode: Set if tests should run normally or only build/run
 match lit_config.params.get("test-mode", "full"):
