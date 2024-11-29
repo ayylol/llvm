@@ -59,6 +59,32 @@ on:
         default: ''
         required: False
 
+      # TODO: add inputs for upload/download of e2e binaries artifact
+      #e2e_binaries_artifact:
+      #  type: string
+      #  default: ''
+      #  required: False
+      #e2e_binaries_archive:
+      #  type: string
+      #  default: ''
+      #  required: False
+      #e2e_binaries_decompress_command:
+      #  type: string
+      #  default: ''
+      #  required: False
+
+      # For e2e binary artifact upload
+      upload_artifact:
+        type: string
+        default: 'false'
+      artifact_suffix:
+        type: string
+        default: 'default'
+      artifact_archive_name:
+        type: string
+        default: e2e_binaries.tar.zst
+      ##########################################################################
+
       reset_intel_gpu:
         type: string
         required: False
@@ -77,6 +103,16 @@ on:
         type: string
         default: 'false'
         required: False
+
+    # TODO: add outputs for upload of e2e binaries artifact
+    outputs:
+      run_conclusion:
+        value: ${{ jobs.run.outputs.build_conclusion }}
+      artifact_archive_name:
+        value: ${{ jobs.run.outputs.artifact_archive_name }}
+      artifact_decompress_command:
+        value: ${{ jobs.run.outputs.artifact_decompress_command }}
+    ##########################################################################
 
   workflow_dispatch:
     inputs:
@@ -142,6 +178,21 @@ on:
         options:
           - false
           - true
+      # TODO: e2e binary upload params
+      upload_artifact:
+        type: choice
+        options:
+          - "false"
+          - "true"
+      build_artifact_suffix:
+        type: choice
+        options:
+          - "default"
+      retention-days:
+        type: choice
+        options:
+          - 3
+      #################################
 
 permissions:
   contents: read
@@ -154,10 +205,37 @@ jobs:
     container:
       image: ${{ inputs.image }}
       options: ${{ inputs.image_options }}
+    # TODO: Add outputs for uploading e2e binaries
+    outputs:
+      run_conclusion: ${{ steps.run.conclusion }}
+      artifact_archive_name: ${{ steps.artifact_info.outputs.ARCHIVE_NAME }}
+      artifact_decompress_command: ${{ steps.artifact_info.outputs.DECOMPRESS }}
+    ##########################################################################
     env: ${{ fromJSON(inputs.env) }}
     steps:
     # TODO: Deduce artifact archive params
     # NOTE: Only needs to run for build-only runs
+    - name: Deduce artifact archive params
+      if: inputs.upload_artifact == 'true'
+      # To reduce number of inputs parameters that is limited for manual triggers.
+      id: artifact_info
+      run: |
+        NAME="${{inputs.artifact_archive_name}}"
+        if [ -z "$NAME" ]; then
+          NAME=e2e_binaries.tar.zst
+        fi
+        echo ARCHIVE_NAME="$NAME" >> $GITHUB_OUTPUT
+        if [ "${NAME}" != "${NAME%.tar.gz}" ]; then
+          echo COMPRESS="gzip" >> $GITHUB_OUTPUT
+          echo DECOMPRESS="gunzip" >> $GITHUB_OUTPUT
+        elif [ "${NAME}" != "${NAME%.tar.zst}" ]; then
+          echo COMPRESS="zstd -9" >> $GITHUB_OUTPUT
+          echo DECOMPRESS="zstd" >> $GITHUB_OUTPUT
+        else
+          echo "Unsupported extension"
+          exit 1
+        fi
+    ############################################################################
     - name: Reset Intel GPU
       if: inputs.reset_intel_gpu == 'true'
       run: |
@@ -381,6 +459,17 @@ jobs:
         grep 'exit code: [^0]' -r logs >> $GITHUB_STEP_SUMMARY
 
         exit $ret
-    # TODO: Pack E2E binaries
-    # TODO: Upload E2e binaries
     # NOTE: Only should be ran on build-only runs
+    # TODO: Pack E2E binaries
+    - name: Pack toolchain
+      if: ${{ always() && !cancelled() && inputs.upload_artifact == 'true'}}
+      run: tar -I '${{ steps.artifact_info.outputs.COMPRESS }}' -cf ${{ steps.artifact_info.outputs.ARCHIVE_NAME }} -C ./build-e2e .
+    # TODO: Upload E2e binaries
+    - name: Upload toolchain
+      if: ${{ always() && !cancelled() && inputs.upload_artifact == 'true'}}
+      uses: actions/upload-artifact@v4
+      with:
+        name: sycl_linux_${{ inputs.build_artifact_suffix }}
+        path: ${{ steps.artifact_info.outputs.ARCHIVE_NAME }}
+        retention-days: ${{ inputs.retention-days }}
+    ############################################################################
