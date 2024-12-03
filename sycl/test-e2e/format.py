@@ -161,13 +161,26 @@ class SYCLEndToEndTest(lit.formats.ShTest):
         return features
 
     def select_triples_for_test(self, test):
+        # preprocess requires/unsupported to remove statements with negation
+        unsupported = []
+        for stmt in test.unsupported:
+            if '!' in stmt:
+                litConfig.warning("/".join(test.path_in_suite), "Ignoring statement due to negation:", stmt)
+                continue
+            unsupported.append(stmt)
+        requires = []
+        for stmt in test.requires:
+            if '!' in stmt:
+                litConfig.warning("/".join(test.path_in_suite), "Ignoring statement due to negation:", stmt)
+                continue
+            requires.append(stmt)
         # Check Triples
         triples = set()
         possible_triples = ["spir64"]
         for triple in possible_triples:
-            unsupported = self.make_default_features_list(test, test.unsupported, triple, False)
-            required = self.make_default_features_list(test, test.requires, triple)
-            features = test.config.available_features | unsupported | required
+            features_from_unsupported = self.make_default_features_list(test, unsupported, triple, False)
+            features_from_required = self.make_default_features_list(test, requires, triple)
+            features = test.config.available_features | features_from_unsupported | features_from_required
             if test.getMissingRequiredFeaturesFromList(features):
                 continue
             if self.getMatchedFromList(features, test.unsupported):
@@ -235,11 +248,6 @@ class SYCLEndToEndTest(lit.formats.ShTest):
         devices_for_test = []
         triples = set()
         if test.config.test_mode == "build-only":
-            if (any('!' in a for a in test.requires+test.unsupported)):
-                litConfig.warning("/".join(test.path_in_suite) + " unsupported in build-only mode due to negation in features")
-                return lit.Test.Result(
-                    lit.Test.UNSUPPORTED, "unsupported on build-only due to negation"
-                )
             triples = self.select_triples_for_test(test)
             if not triples:
                 return lit.Test.Result(
