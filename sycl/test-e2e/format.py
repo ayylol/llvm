@@ -55,33 +55,31 @@ def parse_min_intel_driver_req(line_number, line, output):
     return output
 
 # List of available features that affect building
-class FeatureInfo:
-    def __init__(self,
-                 device_agnostic = False,
-                 triples_always_has = set(),
-                 triples_never_has = set()):
-        self.device_agnostic = device_agnostic
-        self.triples_always_has = triples_always_has
-        self.triples_never_has = triples_never_has
+device_agnostic_features = {
+    "linux",
+    "system-linux",
+    "windows",
+    "system-windows",
+    "build-and-run-mode",
+    "opencl-aot",
+    "ocloc",
+    "opencl_icd",
+    "cl_options",
+    "zstd",
+}
 
-def getPossibleFeatures():
-    return {
-            "linux"                 :FeatureInfo(device_agnostic=True),
-            "system-linux"          :FeatureInfo(device_agnostic=True),
-            "windows"               :FeatureInfo(device_agnostic=True),
-            "system-windows"        :FeatureInfo(device_agnostic=True),
-            "build-and-run-mode"    :FeatureInfo(device_agnostic=True),
-            "opencl-aot"            :FeatureInfo(device_agnostic=True),
-            "ocloc"                 :FeatureInfo(device_agnostic=True),
-            "opencl_icd"            :FeatureInfo(device_agnostic=True),
-            "cl_options"            :FeatureInfo(device_agnostic=True),
-            "cuda"                  :FeatureInfo(triples_never_has={"spir64"}),
-            "hip"                   :FeatureInfo(triples_never_has={"spir64"}),
-            "hip_amd"               :FeatureInfo(triples_never_has={"spir64"}),
-            "hip_nvidia"            :FeatureInfo(triples_never_has={"spir64"}),
-            "native_cpu"            :FeatureInfo(triples_never_has={"spir64"}),
+triples_features = {
+    "spir64": {
+        "always_has": set(),
+        "never_has": {
+            "cuda",
+            "hip",
+            "hip_amd",
+            "hip_nvidia",
+            "native_cpu",
+        }
     }
-possible_features=getPossibleFeatures()
+}
 
 class SYCLEndToEndTest(lit.formats.ShTest):
     def getUsedFeatures(self, test, expressions):
@@ -146,34 +144,47 @@ class SYCLEndToEndTest(lit.formats.ShTest):
         except ValueError as e:
             raise ValueError("Error in UNSUPPORTED list:\n%s" % str(e))
 
-    def make_default_features_list(self, test, expr, triple, add_default=True):
+    def get_undetermined_features(self, test, expr, triple):
+        import itertools
         features_queried_by_test = self.getUsedFeatures(test, expr)
         features = set()
         for feature in features_queried_by_test:
-            info = possible_features[feature] if feature in possible_features else FeatureInfo()
-            if info.device_agnostic:
+            if feature in device_agnostic_features:
                 continue
-            if add_default and triple in info.triples_never_has:
+            if feature in triples_features[triple]["always_has"]:
                 continue
-            if not add_default and triple not in info.triples_always_has:
+            if feature in triples_features[triple]["never_has"]:
                 continue
             features.add(feature)
         return features
 
     def select_triples_for_test(self, test):
-        # Check Triples
+        import itertools
         triples = set()
         possible_triples = ["spir64"]
         for triple in possible_triples:
-            unsupported = self.make_default_features_list(test, test.unsupported, triple, False)
-            required = self.make_default_features_list(test, test.requires, triple)
-            features = test.config.available_features | unsupported | required
-            if test.getMissingRequiredFeaturesFromList(features):
-                continue
-            if self.getMatchedFromList(features, test.unsupported):
-                continue
-            triples.add(triple)
-
+            unknown_unsupported = self.get_undetermined_features(test, test.unsupported, triple)
+            unknown_requires = self.get_undetermined_features(test, test.requires, triple)
+            features = test.config.available_features | triples_features[triple]["always_has"]
+            if (any('!' in a for a in test.requires+test.unsupported)):
+                done = False
+                unknown_features = unknown_requires | unknown_unsupported
+                for L in range(len(unknown_features) + 1, -1, -1):
+                    for subset in itertools.combinations(unknown_features, L):
+                        current_features = set(subset) | features
+                        if test.getMissingRequiredFeaturesFromList(current_features):
+                            continue
+                        if self.getMatchedFromList(current_features, test.unsupported):
+                            continue
+                        triples.add(triple)
+                    if done: break
+            else:
+                features |= unknown_requires
+                if test.getMissingRequiredFeaturesFromList(features):
+                    continue
+                if self.getMatchedFromList(features, test.unsupported):
+                    continue
+                triples.add(triple)
         return triples
 
     def select_devices_for_test(self, test):
@@ -235,11 +246,6 @@ class SYCLEndToEndTest(lit.formats.ShTest):
         devices_for_test = []
         triples = set()
         if test.config.test_mode == "build-only":
-            if (any('!' in a for a in test.requires+test.unsupported)):
-                litConfig.warning("/".join(test.path_in_suite) + " unsupported in build-only mode due to negation in features")
-                return lit.Test.Result(
-                    lit.Test.UNSUPPORTED, "unsupported on build-only due to negation"
-                )
             triples = self.select_triples_for_test(test)
             if not triples:
                 return lit.Test.Result(
